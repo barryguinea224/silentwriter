@@ -1,0 +1,140 @@
+# .silentwriter.yml
+# SilentWriter Labs — Architecture Rules Engine
+# Powered by IBM Granite · WatsonX
+# -----------------------------------------
+# Every rule defines what SilentWriter
+# will BLOCK, WARN, or REQUIRE on each PR.
+# -----------------------------------------
+
+version: 1
+
+settings:
+  mode: "active"           # active = block | passive = warn only
+  notify_slack: true
+  auto_generate_docs: true
+  auto_generate_agents_md: true
+
+# ─────────────────────────────────────────
+# RULE 1 — Protect API contracts
+# ─────────────────────────────────────────
+rules:
+  - name: "Protect API contracts"
+    description: "No breaking changes on public API functions"
+    pattern: "src/api/**"
+    forbidden_changes:
+      - "change function signature"
+      - "remove parameter"
+      - "change return type"
+    severity: critical
+    auto_block: true
+    message: |
+      ⛔ Breaking change detected in API layer.
+      This function is called by external services.
+      → Add an overload or create a new versioned endpoint.
+
+# ─────────────────────────────────────────
+# RULE 2 — Tests required on core
+# ─────────────────────────────────────────
+  - name: "Tests required on core"
+    description: "All changes in /core must have unit tests"
+    pattern: "src/core/**"
+    required_tests: true
+    min_coverage: 80
+    severity: critical
+    auto_block: true
+    message: |
+      ⛔ No tests detected for this core change.
+      Coverage must be > 80% on /core.
+      → A test template has been auto-generated.
+
+# ─────────────────────────────────────────
+# RULE 3 — Allowed dependencies only
+# ─────────────────────────────────────────
+  - name: "Allowed dependencies"
+    description: "Only approved libraries can be added"
+    pattern: "package.json"
+    allow_list:
+      - "gradio"
+      - "next"
+      - "react"
+      - "prisma"
+      - "fastapi"
+      - "pydantic"
+    block_list:
+      - "mongoose"
+      - "sequelize"
+      - "typeorm"
+    severity: high
+    auto_block: true
+    message: |
+      ⛔ Unauthorized dependency detected.
+      This library is not in the approved stack.
+      → Explain your reason in the PR or use an approved alternative.
+
+# ─────────────────────────────────────────
+# RULE 4 — Protect core domain
+# ─────────────────────────────────────────
+  - name: "Core domain protection"
+    description: "Changes to domain logic require lead review"
+    pattern: "domain/**"
+    require_review_from:
+      - "tech-lead"
+      - "architect"
+    min_approvals: 2
+    severity: high
+    auto_block: false      # warn only — does not auto-block
+    message: |
+      ⚠️ This PR touches the core domain.
+      Approval required from: @tech-lead + @architect
+      → SilentWriter has notified the reviewers.
+
+# ─────────────────────────────────────────
+# RULE 5 — Auth layer protection
+# ─────────────────────────────────────────
+  - name: "Auth layer protection"
+    description: "Authentication functions are sensitive"
+    pattern: "src/auth/**"
+    forbidden_changes:
+      - "change function signature"
+      - "remove security check"
+    required_tests: true
+    severity: critical
+    auto_block: true
+    message: |
+      ⛔ Change detected in authentication layer.
+      Auth functions are critical — any signature change
+      can break all integrations.
+      → Create a new versioned auth function instead.
+
+# ─────────────────────────────────────────
+# RULE 6 — agents.md must stay in sync
+# ─────────────────────────────────────────
+  - name: "agents.md sync"
+    description: "agents.md must be updated when API changes"
+    pattern: "src/api/**"
+    required_files_update:
+      - "agents.md"
+    severity: medium
+    auto_block: false
+    auto_generate: true    # SilentWriter auto-generates agents.md
+    message: |
+      🤖 API changed — agents.md has been auto-updated by SilentWriter.
+      AI agents using this API will receive the updated instructions.
+
+# ─────────────────────────────────────────
+# DOCUMENTATION
+# ─────────────────────────────────────────
+docs:
+  auto_update: true
+  targets:
+    - "README.md"
+    - "agents.md"
+    - "docs/api.md"
+  powered_by: "IBM Granite · WatsonX"
+
+# -----------------------------------------
+# SilentWriter Labs · IBM Hackathon 2025
+# "The AI that does the code review
+#  no one wants to do." 🤫✍️
+# -----------------------------------------
+
