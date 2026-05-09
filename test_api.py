@@ -1,4 +1,4 @@
-def get_user(user_id):
+def get_user(user_id, api_key):
     return {"id": user_id}
 
 def create_order(user_id, items):
