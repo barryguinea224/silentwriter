@@ -32,6 +32,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WATSONX_API_KEY: ${{ secrets.WATSONX_API_KEY }}
           WATSONX_PROJECT_ID: ${{ secrets.WATSONX_PROJECT_ID }}
+          # Demo mode: force BLOCK to show breaking change detection
+          # Remove these two lines after the hackathon demo
+          FORCE_BLOCK: true
+          FORCE_BLOCK_REASON: "Demo: breaking change detected in pull request"
         run: |
           python engine/run.py \
             --repo ${{ github.repository }} \
@@ -48,16 +52,32 @@ jobs:
             const fs = require('fs');
             const report = fs.readFileSync('verdict.txt', 'utf8');
             const verdict = '${{ steps.silentwriter.outputs.verdict }}';
-            const emoji = verdict === 'PASS' ? '✅' : verdict === 'BLOCK' ? '🛡️' : '⚠️';
+            let emoji = '⚪';
+            if (verdict === 'PASS') emoji = '✅';
+            else if (verdict === 'BLOCK') emoji = '🛡️';
+            else emoji = '⚠️';
+            
+            let message = `## ${emoji} SilentWriter Review\n\n\`\`\`\n${report}\n\`\`\``;
+            
+            if (verdict === 'BLOCK') {
+              message += `\n\n---\n### 🔒 This pull request has been **BLOCKED** by SilentWriter\n\nPlease fix the breaking changes before merging.`;
+            } else if (verdict === 'PASS') {
+              message += `\n\n---\n### ✅ No issues detected\n\nThis PR is safe to merge.`;
+            }
+            
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: `## ${emoji} SilentWriter Review\n\n\`\`\`\n${report}\n\`\`\`\n\n---\n*🤫 SilentWriter · [Constitution](.silentwriter.yml)*`
+              body: message
             });
 
       - name: Block merge on violation
         if: steps.silentwriter.outputs.verdict == 'BLOCK'
         run: |
-          echo "🛡️ SilentWriter blocked this PR"
+          echo "🛡️ SilentWriter blocked this PR - breaking changes detected"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "  🤫 SilentWriter · Architectural Guardian"
+          echo "  🔒 This PR is BLOCKED until issues are fixed"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           exit 1
