@@ -84,6 +84,8 @@ def main() -> int:
         print(f"Error fetching PR diff: {e}", file=sys.stderr)
         return 1
 
+    
+ 
     # Analyse
     try:
         result = analyze_diff_text(diff, config_path=args.config)
