@@ -1,119 +1,63 @@
-# .github/workflows/silentwriter.yml
-name: 🤫 SilentWriter
+name: 🤫 SilentWriter — Architectural Guardian
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-  pull_request_review:
-    types: [submitted]
 
 permissions:
   contents: read
   pull-requests: write
   issues: write
-  checks: write
 
 jobs:
   silent-guardian:
     runs-on: ubuntu-latest
-    name: 🤫 Silent Guardian — Architectural Review
-    
+    name: 🤫 Silent Guardian Review
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          fetch-depth: 0
+          python-version: '3.11'
 
-      - name: Load SilentWriter Constitution
-        id: config
-        run: |
-          if [ -f .silentwriter.yml ]; then
-            echo "📋 Constitution found"
-            cat .silentwriter.yml
-            echo "loaded=true" >> $GITHUB_OUTPUT
-          else
-            echo "⚠️ No .silentwriter.yml found — skipping"
-            echo "loaded=false" >> $GITHUB_OUTPUT
-          fi
+      - name: Install dependencies
+        run: pip install pyyaml requests
 
-      - name: Setup IBM Bob CLI
-        if: steps.config.outputs.loaded == 'true'
-        run: |
-          # Install Bob Shell for non-interactive CI/CD
-          curl -fsSL https://bob.ibm.com/install.sh | bash
-          bob --version
-
-      - name: Authenticate Bob
-        if: steps.config.outputs.loaded == 'true'
+      - name: Run SilentWriter Engine
+        id: silentwriter
         env:
-          BOB_API_KEY: ${{ secrets.BOB_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WATSONX_API_KEY: ${{ secrets.WATSONX_API_KEY }}
+          WATSONX_PROJECT_ID: ${{ secrets.WATSONX_PROJECT_ID }}
         run: |
-          bob auth --api-key "$BOB_API_KEY"
+          python engine/run.py \
+            --repo ${{ github.repository }} \
+            --pr ${{ github.event.pull_request.number }} \
+            > verdict.txt 2>&1 || true
+          cat verdict.txt
+          echo "verdict=$(grep -oP 'Verdict: \K\w+' verdict.txt)" >> $GITHUB_OUTPUT
 
-      - name: Run Silent Guardian Analysis
-        if: steps.config.outputs.loaded == 'true'
-        id: review
-        run: |
-          bob mode silent-guardian --review-pr ${{ github.event.pull_request.number }}
-          
-          # Capture Bob's verdict
-          VERDICT=$(bob verdict --pr ${{ github.event.pull_request.number }})
-          echo "verdict=$VERDICT" >> $GITHUB_OUTPUT
-          
-          if [ "$VERDICT" = "BLOCK" ]; then
-            echo "🛡️ SilentWriter blocked this PR"
-            exit 1
-          elif [ "$VERDICT" = "WARN" ]; then
-            echo "⚠️ SilentWriter issued warnings"
-          else
-            echo "✅ All rules passed"
-          fi
-
-      - name: Post SilentWriter Report
-        if: always() && steps.config.outputs.loaded == 'true'
+      - name: Comment PR
+        if: always()
         uses: actions/github-script@v7
         with:
           script: |
-            const verdict = '${{ steps.review.outputs.verdict }}';
+            const fs = require('fs');
+            const report = fs.readFileSync('verdict.txt', 'utf8');
+            const verdict = '${{ steps.silentwriter.outputs.verdict }}';
             const emoji = verdict === 'PASS' ? '✅' : verdict === 'BLOCK' ? '🛡️' : '⚠️';
-            
-            const body = `## ${emoji} SilentWriter Review
-            ${verdict === 'BLOCK' ? '### 🛡️ This PR has been blocked by SilentWriter\n\nSee the review above for details and suggested fixes.\n\n💡 Type \`/silent-fix\` for Bob to generate the correction.' : ''}
-            ${verdict === 'WARN' ? '### ⚠️ SilentWriter has warnings\n\nSome architectural rules require attention. See details above.' : ''}
-            ${verdict === 'PASS' ? '### ✅ All architectural rules pass\n\nNo violations detected. Good work! 🤫' : ''}
-            
-            ---
-            *🤫 SilentWriter · [Constitution](.silentwriter.yml) · [Rules](.bob/rules-silent-guardian/)*`;
-            
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: body
+              body: `## ${emoji} SilentWriter Review\n\n\`\`\`\n${report}\n\`\`\`\n\n---\n*🤫 SilentWriter · [Constitution](.silentwriter.yml)*`
             });
 
-      - name: Auto-Generate agents.md
-        if: steps.config.outputs.loaded == 'true' && steps.review.outputs.verdict == 'PASS'
+      - name: Block merge on violation
+        if: steps.silentwriter.outputs.verdict == 'BLOCK'
         run: |
-          bob mode silent-guardian --generate-agents-md
-          
-          # Check if agents.md was updated
-          if git diff --quiet agents.md; then
-            echo "📝 agents.md is already up to date"
-          else
-            echo "🤖 agents.md updated — committing"
-            git config user.name "SilentWriter[bot]"
-            git config user.email "silentwriter[bot]@users.noreply.github.com"
-            git add agents.md
-            git commit -m "docs: auto-update agents.md [SilentWriter]"
-            git push
-          fi
-
-      - name: Status Badge
-        if: always()
-        run: |
-          if [ "${{ steps.review.outcome }}" = "success" ]; then
-            echo "🟢 SilentWriter: PASS" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "🔴 SilentWriter: VIOLATIONS DETECTED" >> $GITHUB_STEP_SUMMARY
-          fi
+          echo "🛡️ SilentWriter blocked this PR"
+          exit 1
