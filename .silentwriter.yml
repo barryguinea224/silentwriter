@@ -1,57 +1,145 @@
-# .silentwriter.yml
-# SilentWriter Labs — Architecture Rules Engine
-# Powered by IBM Granite · WatsonX
-# -----------------------------------------
-# Every rule defines what SilentWriter
-# will BLOCK, WARN, or REQUIRE on each PR.
-# -----------------------------------------
+# ═══════════════════════════════════════════════════════════════
+# .silentwriter.yml — The Architectural Constitution
+# SilentWriter Labs · IBM Bob · Granite · WatsonX
+# ═══════════════════════════════════════════════════════════════
+#
+# Drop this file into any repository.
+# IBM Bob becomes your silent architectural guardian.
+# It blocks breaking changes, enforces standards,
+# and keeps documentation alive for humans and AI agents.
+#
+# "The AI that does the code review no one wants to do." 🤫✍️
+# ═══════════════════════════════════════════════════════════════
 
-version: 1
+version: 2.0
+config_name: "SilentWriter Constitution"
 
+# ───────────────────────────────────────────────────────────────
+# METADATA
+# ───────────────────────────────────────────────────────────────
+metadata:
+  author: "SilentWriter Labs"
+  maintainer: "Elhadj Alpha Mamadou Barry"
+  description: >
+    SilentWriter turns IBM Bob into a silent architectural guardian.
+    It enforces codebase rules automatically, blocks breaking changes,
+    auto-generates documentation for AI agents, and protects
+    the integrity of your software architecture — without politics.
+  tags:
+    - architecture-governance
+    - code-review
+    - breaking-change-detection
+    - ai-agents
+    - documentation-sync
+    - ibm-granite
+  requires_bob: ">=1.0.0"
+  bob_mode: "silent-guardian"
+  hackathon: "IBM Hackathon · May 15 2025"
+
+# ───────────────────────────────────────────────────────────────
+# GLOBAL SETTINGS
+# ───────────────────────────────────────────────────────────────
 settings:
-  mode: "active"           # active = block | passive = warn only
-  notify_slack: true
-  auto_generate_docs: true
-  auto_generate_agents_md: true
+  # active   → Bob blocks critical violations
+  # passive  → Bob warns without blocking
+  # learning → Bob observes and suggests rules
+  mode: "active"
 
-# ─────────────────────────────────────────
-# RULE 1 — Protect API contracts
-# ─────────────────────────────────────────
+  notifications:
+    slack: true
+    slack_channel: "#code-review"
+    mention_on_block: ["@tech-lead", "@architect"]
+    mention_on_warn: ["@team"]
+
+  auto_approve:
+    enabled: true
+    conditions:
+      - "all_critical_rules_pass"
+      - "test_coverage_not_decreased"
+      - "no_blocked_dependencies_added"
+
+  auto_generate:
+    agents_md: true        # AI agent instructions — synced after every commit
+    api_docs: true         # OpenAPI / Swagger documentation
+    changelog: true        # CHANGELOG.md automatic update
+    pr_description: true   # Bob fills PR description automatically
+
+  learning:
+    enabled: true
+    track_decisions: true  # Bob learns from human overrides
+    suggest_new_rules: true
+
+# ───────────────────────────────────────────────────────────────
+# ARCHITECTURAL RULES
+# ───────────────────────────────────────────────────────────────
 rules:
+
+  # ═══════════════════════════════════════════
+  # RULE 01 — API CONTRACT PROTECTION
+  # ═══════════════════════════════════════════
   - name: "Protect API contracts"
-    description: "No breaking changes on public API functions"
+    id: "SILENT-001"
+    description: >
+      Public API function signatures cannot be modified.
+      All breaking changes must go through a versioned endpoint.
     pattern: "src/api/**"
+    scope: "public_functions"
     forbidden_changes:
       - "change function signature"
-      - "remove parameter"
+      - "remove exported function"
       - "change return type"
+      - "remove parameter"
+      - "change parameter type"
+      - "rename exported function"
+    exceptions:
+      - "adding optional parameter"
+      - "adding overload"
+      - "deprecation with @deprecated tag"
     severity: critical
     auto_block: true
     message: |
-      ⛔ Breaking change detected in API layer.
-      This function is called by external services.
-      → Add an overload or create a new versioned endpoint.
+      🛡️ SilentWriter blocked this change.
+      Rule    : SILENT-001 — Protect API Contracts
+      File    : {{file}}
+      Function: {{function_name}}
+      Reason  : {{violation_description}}
+      Impact  : {{caller_count}} external services will break.
+      Fix     : Create {{function_name}}V2 or add @deprecated.
+      🤖 Type `/silent-fix SILENT-001` — Bob generates the migration.
 
-# ─────────────────────────────────────────
-# RULE 2 — Tests required on core
-# ─────────────────────────────────────────
+  # ═══════════════════════════════════════════
+  # RULE 02 — TESTS REQUIRED ON CORE
+  # ═══════════════════════════════════════════
   - name: "Tests required on core"
-    description: "All changes in /core must have unit tests"
+    id: "SILENT-002"
+    description: >
+      All changes to business logic must include unit tests
+      with a minimum coverage of 80%.
     pattern: "src/core/**"
     required_tests: true
     min_coverage: 80
+    min_new_tests: 1
+    forbid_coverage_decrease: true
     severity: critical
     auto_block: true
     message: |
-      ⛔ No tests detected for this core change.
-      Coverage must be > 80% on /core.
-      → A test template has been auto-generated.
+      🧪 SilentWriter detected missing tests.
+      Rule     : SILENT-002 — Tests Required on Core
+      File     : {{file}}
+      Coverage : {{current_coverage}}% (minimum: 80%)
+      Fix      : Add unit tests for {{changed_functions}}.
+      🤖 Auto-generated test template:
+      ```{{language}}
+      {{test_template}}
+      ```
 
-# ─────────────────────────────────────────
-# RULE 3 — Allowed dependencies only
-# ─────────────────────────────────────────
-  - name: "Allowed dependencies"
-    description: "Only approved libraries can be added"
+  # ═══════════════════════════════════════════
+  # RULE 03 — APPROVED DEPENDENCIES ONLY
+  # ═══════════════════════════════════════════
+  - name: "Allowed dependencies only"
+    id: "SILENT-003"
+    description: >
+      Only approved libraries can be added to the project.
     pattern: "package.json"
     allow_list:
       - "gradio"
@@ -60,81 +148,216 @@ rules:
       - "prisma"
       - "fastapi"
       - "pydantic"
+      - "ibm-watsonx-ai"
+      - "ibm-granite"
     block_list:
       - "mongoose"
       - "sequelize"
       - "typeorm"
+      - "left-pad"
+      - "colors"
+    warn_list:
+      - "moment"      # Prefer date-fns
+      - "lodash"      # Prefer native methods
+      - "axios"       # Prefer fetch
+    max_dependencies_per_pr: 5
     severity: high
     auto_block: true
     message: |
-      ⛔ Unauthorized dependency detected.
-      This library is not in the approved stack.
-      → Explain your reason in the PR or use an approved alternative.
+      📦 SilentWriter blocked an unauthorized dependency.
+      Rule      : SILENT-003 — Allowed Dependencies
+      Dependency: {{dependency_name}}
+      Fix       : Use {{suggested_alternative}} instead.
+      Override  : `/silent-override SILENT-003 --reason='...'`
 
-# ─────────────────────────────────────────
-# RULE 4 — Protect core domain
-# ─────────────────────────────────────────
+  # ═══════════════════════════════════════════
+  # RULE 04 — CORE DOMAIN PROTECTION
+  # ═══════════════════════════════════════════
   - name: "Core domain protection"
-    description: "Changes to domain logic require lead review"
+    id: "SILENT-004"
+    description: >
+      Changes to business domain logic require approval
+      from Tech Lead and Architect.
     pattern: "domain/**"
     require_review_from:
       - "tech-lead"
       - "architect"
     min_approvals: 2
+    auto_request_review: true
     severity: high
-    auto_block: false      # warn only — does not auto-block
+    auto_block: false
     message: |
-      ⚠️ This PR touches the core domain.
-      Approval required from: @tech-lead + @architect
-      → SilentWriter has notified the reviewers.
+      👑 SilentWriter detected a domain-level change.
+      Rule   : SILENT-004 — Core Domain Protection
+      File   : {{file}}
+      Impact : {{impact_analysis}}
+      Action : @tech-lead and @architect assigned automatically.
+               #architecture notified on Slack.
 
-# ─────────────────────────────────────────
-# RULE 5 — Auth layer protection
-# ─────────────────────────────────────────
+  # ═══════════════════════════════════════════
+  # RULE 05 — AUTH LAYER PROTECTION
+  # ═══════════════════════════════════════════
   - name: "Auth layer protection"
-    description: "Authentication functions are sensitive"
+    id: "SILENT-005"
+    description: >
+      Authentication functions are critical.
+      No unsupervised modification is allowed.
     pattern: "src/auth/**"
     forbidden_changes:
       - "change function signature"
       - "remove security check"
+      - "change token handling"
+      - "modify password hashing"
+      - "alter OAuth flow"
     required_tests: true
+    min_coverage: 90
+    require_security_review: true
     severity: critical
     auto_block: true
     message: |
-      ⛔ Change detected in authentication layer.
-      Auth functions are critical — any signature change
-      can break all integrations.
-      → Create a new versioned auth function instead.
+      🔐 SilentWriter blocked a critical security change.
+      Rule   : SILENT-005 — Auth Layer Protection
+      File   : {{file}}
+      🚨 Required: security review + 90% test coverage.
 
-# ─────────────────────────────────────────
-# RULE 6 — agents.md must stay in sync
-# ─────────────────────────────────────────
+  # ═══════════════════════════════════════════
+  # RULE 06 — AGENTS.MD AUTO-SYNC
+  # ═══════════════════════════════════════════
   - name: "agents.md sync"
-    description: "agents.md must be updated when API changes"
+    id: "SILENT-006"
+    description: >
+      When the API changes, agents.md is automatically
+      updated by Bob for AI agent consumers.
     pattern: "src/api/**"
     required_files_update:
       - "agents.md"
+      - "docs/api.md"
+    auto_generate: true
+    auto_commit: true
     severity: medium
     auto_block: false
-    auto_generate: true    # SilentWriter auto-generates agents.md
     message: |
-      🤖 API changed — agents.md has been auto-updated by SilentWriter.
-      AI agents using this API will receive the updated instructions.
+      🤖 SilentWriter auto-updated agents.md.
+      Changes: {{api_changes_summary}}
+      Commit : `docs: auto-update agents.md [SilentWriter]`
+      AI agents on this repo will receive updated instructions.
 
-# ─────────────────────────────────────────
-# DOCUMENTATION
-# ─────────────────────────────────────────
-docs:
-  auto_update: true
-  targets:
-    - "README.md"
-    - "agents.md"
-    - "docs/api.md"
-  powered_by: "IBM Granite · WatsonX"
+  # ═══════════════════════════════════════════
+  # RULE 07 — NAMING CONVENTIONS
+  # ═══════════════════════════════════════════
+  - name: "Naming conventions"
+    id: "SILENT-007"
+    pattern: "src/**"
+    naming_rules:
+      files: "kebab-case"
+      functions: "camelCase"
+      classes: "PascalCase"
+      constants: "UPPER_SNAKE_CASE"
+      test_files: "*.test.ts"
+    severity: medium
+    auto_block: false
+    message: |
+      📝 Naming issue: rename `{{current_name}}` → `{{suggested_name}}`
+      Not blocking. Consistency helps humans and AI agents alike.
 
-# -----------------------------------------
+  # ═══════════════════════════════════════════
+  # RULE 08 — COMPLEXITY LIMIT
+  # ═══════════════════════════════════════════
+  - name: "Cyclomatic complexity limit"
+    id: "SILENT-008"
+    pattern: "src/**"
+    max_complexity: 10
+    max_function_lines: 50
+    max_file_lines: 500
+    severity: warning
+    auto_block: false
+    message: |
+      📐 Complex function detected.
+      Function   : {{function_name}}
+      Complexity : {{complexity}}/10
+      🤖 Type `/silent-refactor {{function_name}}` for Bob's suggestion.
+
+  # ═══════════════════════════════════════════
+  # RULE 09 — NO SECRETS IN CODE
+  # ═══════════════════════════════════════════
+  - name: "No secrets in code"
+    id: "SILENT-009"
+    pattern: "**"
+    scan_for:
+      - "API key patterns"
+      - "password assignments"
+      - "token strings"
+      - "private keys"
+      - "connection strings with credentials"
+    severity: critical
+    auto_block: true
+    alert_security: true
+    message: |
+      🔑 SECRET DETECTED IN CODE — DO NOT MERGE.
+      Rule : SILENT-009 — No Secrets in Code
+      File : {{file}} · Line: {{line_number}}
+      Fix  : const API_KEY = process.env.API_KEY
+
+  # ═══════════════════════════════════════════
+  # RULE 10 — DATABASE MIGRATION SAFETY
+  # ═══════════════════════════════════════════
+  - name: "Database migration safety"
+    id: "SILENT-010"
+    pattern: "migrations/**"
+    required_fields:
+      - "up function"
+      - "down function"
+    forbidden_patterns:
+      - "DROP COLUMN"
+      - "TRUNCATE"
+      - "DELETE FROM"
+    require_rollback_test: true
+    severity: critical
+    auto_block: true
+    message: |
+      🗄️ Dangerous migration blocked.
+      Rule : SILENT-010 — Migration Safety
+      Fix  : Add `down` function + test rollback on staging.
+
+# ───────────────────────────────────────────────────────────────
+# TEAM & PERMISSIONS
+# ───────────────────────────────────────────────────────────────
+team:
+  roles:
+    tech-lead:
+      can_override: ["SILENT-004", "SILENT-008"]
+    architect:
+      can_override: ["SILENT-001", "SILENT-004"]
+    security:
+      can_override: ["SILENT-005", "SILENT-009"]
+    developer:
+      can_override: ["SILENT-007"]
+
+# ───────────────────────────────────────────────────────────────
+# SLASH COMMANDS (IBM BOB)
+# ───────────────────────────────────────────────────────────────
+commands:
+  /silent-guard:
+    description: "Run a full analysis of the repository"
+    usage: "/silent-guard [--path=src/api] [--rule=SILENT-001]"
+  /silent-fix:
+    description: "Bob generates the fix for a violation"
+    usage: "/silent-fix SILENT-001"
+  /silent-docs:
+    description: "Regenerate agents.md and all documentation"
+    usage: "/silent-docs generate"
+  /silent-report:
+    description: "Generate an architecture health report"
+    usage: "/silent-report [--week] [--month]"
+  /silent-override:
+    description: "Override a rule with justification"
+    usage: "/silent-override SILENT-003 --reason='...'"
+  /silent-learn:
+    description: "Enter learning mode to observe patterns"
+    usage: "/silent-learn start"
+
+# ═══════════════════════════════════════════════════════════════
 # SilentWriter Labs · IBM Hackathon 2025
-# "The AI that does the code review
-#  no one wants to do." 🤫✍️
-# -----------------------------------------
-
+# "The code is poetry. The architecture is silence."
+# Powered by IBM Bob · Granite · WatsonX 🤫✍️
+# ═══════════════════════════════════════════════════════════════
