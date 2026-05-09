@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from diff_analyzer import analyze_diff_text
 
 
-def fetch_pr_diff(repo: str, pr_number: int, token: str) -> str:
+def fetch_pr_diff(repo: str, pr_number: int, token: str, strict_mode: bool = False) -> str:
     """Fetch the raw unified diff for a GitHub pull request."""
     url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}"
     headers = {
