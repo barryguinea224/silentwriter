@@ -1,0 +1,63 @@
+name: 🤫 SilentWriter — Architectural Guardian
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  silent-guardian:
+    runs-on: ubuntu-latest
+    name: 🤫 Silent Guardian Review
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install pyyaml requests
+
+      - name: Run SilentWriter Engine
+        id: silentwriter
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WATSONX_API_KEY: ${{ secrets.WATSONX_API_KEY }}
+          WATSONX_PROJECT_ID: ${{ secrets.WATSONX_PROJECT_ID }}
+        run: |
+          python engine/run.py \
+            --repo ${{ github.repository }} \
+            --pr ${{ github.event.pull_request.number }} \
+            > verdict.txt 2>&1 || true
+          cat verdict.txt
+          echo "verdict=$(grep -oP 'Verdict: \K\w+' verdict.txt)" >> $GITHUB_OUTPUT
+
+      - name: Comment PR
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('verdict.txt', 'utf8');
+            const verdict = '${{ steps.silentwriter.outputs.verdict }}';
+            const emoji = verdict === 'PASS' ? '✅' : verdict === 'BLOCK' ? '🛡️' : '⚠️';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## ${emoji} SilentWriter Review\n\n\`\`\`\n${report}\n\`\`\`\n\n---\n*🤫 SilentWriter · [Constitution](.silentwriter.yml)*`
+            });
+
+      - name: Block merge on violation
+        if: steps.silentwriter.outputs.verdict == 'BLOCK'
+        run: |
+          echo "🛡️ SilentWriter blocked this PR"
+          exit 1
