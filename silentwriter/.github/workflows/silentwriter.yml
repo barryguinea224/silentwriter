@@ -1,0 +1,344 @@
+name: 🤫 SilentWriter — Architectural Guardian
+
+# ═══════════════════════════════════════════════════════════════
+# Enhanced GitHub Actions Workflow for Breaking Change Detection
+# Automatically blocks PRs that violate architectural rules
+# ═══════════════════════════════════════════════════════════════
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+      - master
+      - develop
+
+# Prevent concurrent runs on the same PR
+concurrency:
+  group: silentwriter-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  checks: write
+  statuses: write
+
+jobs:
+  silent-guardian:
+    runs-on: ubuntu-latest
+    name: 🤫 Silent Guardian Review
+    timeout-minutes: 10
+
+    # Job-level outputs for downstream workflows
+    outputs:
+      verdict: ${{ steps.silentwriter.outputs.verdict }}
+      violations_count: ${{ steps.silentwriter.outputs.violations_count }}
+      critical_violations: ${{ steps.silentwriter.outputs.critical_violations }}
+
+    steps:
+      # ─────────────────────────────────────────────────────────
+      # STEP 1: Checkout repository
+      # ─────────────────────────────────────────────────────────
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for better diff analysis
+
+      # ─────────────────────────────────────────────────────────
+      # STEP 2: Setup Python with caching
+      # ─────────────────────────────────────────────────────────
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      # ─────────────────────────────────────────────────────────
+      # STEP 3: Install dependencies
+      # ─────────────────────────────────────────────────────────
+      - name: 📦 Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyyaml requests
+
+      # ─────────────────────────────────────────────────────────
+      # STEP 4: Validate configuration
+      # ─────────────────────────────────────────────────────────
+      - name: ✅ Validate .silentwriter.yml
+        run: |
+          if [ ! -f .silentwriter.yml ]; then
+            echo "❌ Error: .silentwriter.yml not found"
+            exit 1
+          fi
+          python -c "import yaml; yaml.safe_load(open('.silentwriter.yml'))"
+          echo "✅ Configuration file is valid"
+
+      # ─────────────────────────────────────────────────────────
+      # STEP 5: Run SilentWriter Engine
+      # ─────────────────────────────────────────────────────────
+      - name: 🤫 Run SilentWriter Analysis
+        id: silentwriter
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WATSONX_API_KEY: ${{ secrets.WATSONX_API_KEY }}
+          WATSONX_PROJECT_ID: ${{ secrets.WATSONX_PROJECT_ID }}
+        run: |
+          set +e  # Don't exit on error, we handle it below
+          
+          echo "🔍 Analyzing PR #${{ github.event.pull_request.number }}..."
+          
+          python engine/run.py \
+            --repo ${{ github.repository }} \
+            --pr ${{ github.event.pull_request.number }} \
+            --config .silentwriter.yml \
+            > verdict.txt 2>&1
+          
+          EXIT_CODE=$?
+          
+          # Display the full report
+          cat verdict.txt
+          
+          # Extract verdict (PASS, WARN, or BLOCK)
+          VERDICT=$(grep -oP 'Verdict: \K\w+' verdict.txt || echo "UNKNOWN")
+          echo "verdict=${VERDICT}" >> $GITHUB_OUTPUT
+          
+          # Count violations
+          VIOLATIONS=$(grep -c "🔴\|🟠\|🟡" verdict.txt || echo "0")
+          echo "violations_count=${VIOLATIONS}" >> $GITHUB_OUTPUT
+          
+          # Check for critical violations
+          CRITICAL=$(grep -c "🔴" verdict.txt || echo "0")
+          echo "critical_violations=${CRITICAL}" >> $GITHUB_OUTPUT
+          
+          # Set job summary
+          echo "### 🤫 SilentWriter Analysis Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Verdict:** ${VERDICT}" >> $GITHUB_STEP_SUMMARY
+          echo "**Total Violations:** ${VIOLATIONS}" >> $GITHUB_STEP_SUMMARY
+          echo "**Critical Violations:** ${CRITICAL}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          cat verdict.txt >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          
+          # Exit with the original exit code
+          exit $EXIT_CODE
+
+      # ─────────────────────────────────────────────────────────
+      # STEP 6: Create detailed PR comment
+      # ─────────────────────────────────────────────────────────
+      - name: 💬 Post PR Comment
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('verdict.txt', 'utf8');
+            const verdict = '${{ steps.silentwriter.outputs.verdict }}';
+            const violations = '${{ steps.silentwriter.outputs.violations_count }}';
+            const critical = '${{ steps.silentwriter.outputs.critical_violations }}';
+            
+            // Determine emoji and status
+            let emoji, status, color;
+            if (verdict === 'PASS') {
+              emoji = '✅';
+              status = 'APPROVED';
+              color = '🟢';
+            } else if (verdict === 'BLOCK') {
+              emoji = '🛡️';
+              status = 'BLOCKED';
+              color = '🔴';
+            } else if (verdict === 'WARN') {
+              emoji = '⚠️';
+              status = 'WARNING';
+              color = '🟡';
+            } else {
+              emoji = '❓';
+              status = 'UNKNOWN';
+              color = '⚪';
+            }
+            
+            // Build comment body
+            let body = `## ${emoji} SilentWriter Review — ${status}\n\n`;
+            
+            if (verdict === 'BLOCK') {
+              body += `> ${color} **This PR is blocked and cannot be merged.**\n`;
+              body += `> Critical architectural violations detected.\n\n`;
+            } else if (verdict === 'WARN') {
+              body += `> ${color} **This PR has warnings but can be merged.**\n`;
+              body += `> Please review the issues below.\n\n`;
+            } else if (verdict === 'PASS') {
+              body += `> ${color} **All architectural rules pass!**\n`;
+              body += `> This PR is safe to merge.\n\n`;
+            }
+            
+            body += `### 📊 Analysis Summary\n\n`;
+            body += `| Metric | Value |\n`;
+            body += `|--------|-------|\n`;
+            body += `| **Verdict** | \`${verdict}\` |\n`;
+            body += `| **Total Violations** | ${violations} |\n`;
+            body += `| **Critical Violations** | ${critical} |\n`;
+            body += `| **PR Number** | #${{ github.event.pull_request.number }} |\n`;
+            body += `| **Commit** | \`${{ github.event.pull_request.head.sha }}\` |\n\n`;
+            
+            body += `### 📋 Detailed Report\n\n`;
+            body += `\`\`\`\n${report}\n\`\`\`\n\n`;
+            
+            if (verdict === 'BLOCK') {
+              body += `### 🔧 How to Fix\n\n`;
+              body += `1. Review the violations listed above\n`;
+              body += `2. Check the [SilentWriter Constitution](.silentwriter.yml) for rule details\n`;
+              body += `3. Make the necessary changes to comply with architectural rules\n`;
+              body += `4. Push your changes — this check will run automatically\n\n`;
+              body += `### 🆘 Need Help?\n\n`;
+              body += `- Review rule documentation in \`.silentwriter.yml\`\n`;
+              body += `- Contact @tech-lead or @architect for override approval\n`;
+              body += `- Use \`/silent-fix RULE-ID\` for automated fix suggestions\n\n`;
+            }
+            
+            body += `---\n`;
+            body += `*🤫 SilentWriter · [Constitution](.silentwriter.yml) · [Documentation](README.md)*`;
+            
+            // Post the comment
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body
+            });
+
+      # ─────────────────────────────────────────────────────────
+      # STEP 7: Add PR labels based on verdict
+      # ─────────────────────────────────────────────────────────
+      - name: 🏷️ Label PR
+        if: always()
+        uses: actions/github-script@v7
+        continue-on-error: true
+        with:
+          script: |
+            const verdict = '${{ steps.silentwriter.outputs.verdict }}';
+            const critical = parseInt('${{ steps.silentwriter.outputs.critical_violations }}');
+            
+            // Remove old labels
+            const oldLabels = ['silentwriter:pass', 'silentwriter:warn', 'silentwriter:block'];
+            for (const label of oldLabels) {
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  name: label
+                });
+              } catch (e) {
+                // Label might not exist, ignore
+              }
+            }
+            
+            // Add new label
+            let newLabel;
+            if (verdict === 'PASS') {
+              newLabel = 'silentwriter:pass';
+            } else if (verdict === 'BLOCK') {
+              newLabel = 'silentwriter:block';
+            } else if (verdict === 'WARN') {
+              newLabel = 'silentwriter:warn';
+            }
+            
+            if (newLabel) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                labels: [newLabel]
+              });
+            }
+            
+            // Add critical label if needed
+            if (critical > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                labels: ['breaking-change']
+              });
+            }
+
+      # ─────────────────────────────────────────────────────────
+      # STEP 8: Create check run for status checks
+      # ─────────────────────────────────────────────────────────
+      - name: 📝 Create Status Check
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const verdict = '${{ steps.silentwriter.outputs.verdict }}';
+            const violations = '${{ steps.silentwriter.outputs.violations_count }}';
+            
+            let conclusion, title, summary;
+            if (verdict === 'PASS') {
+              conclusion = 'success';
+              title = '✅ All architectural rules pass';
+              summary = 'No violations detected. This PR is safe to merge.';
+            } else if (verdict === 'BLOCK') {
+              conclusion = 'failure';
+              title = '🛡️ PR blocked due to critical violations';
+              summary = `${violations} violation(s) detected. This PR cannot be merged.`;
+            } else if (verdict === 'WARN') {
+              conclusion = 'neutral';
+              title = '⚠️ Warnings detected';
+              summary = `${violations} warning(s) detected. Review recommended.`;
+            } else {
+              conclusion = 'cancelled';
+              title = '❓ Analysis incomplete';
+              summary = 'Unable to determine verdict.';
+            }
+            
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'SilentWriter Guardian',
+              head_sha: context.payload.pull_request.head.sha,
+              status: 'completed',
+              conclusion: conclusion,
+              output: {
+                title: title,
+                summary: summary,
+                text: `See the PR comment for detailed analysis.`
+              }
+            });
+
+      # ─────────────────────────────────────────────────────────
+      # STEP 9: Block merge on critical violations
+      # ─────────────────────────────────────────────────────────
+      - name: 🛡️ Block Merge on Violation
+        if: steps.silentwriter.outputs.verdict == 'BLOCK'
+        run: |
+          echo "════════════════════════════════════════════════════════"
+          echo "🛡️ SILENTWRITER BLOCKED THIS PR"
+          echo "════════════════════════════════════════════════════════"
+          echo ""
+          echo "Verdict: BLOCK"
+          echo "Violations: ${{ steps.silentwriter.outputs.violations_count }}"
+          echo "Critical: ${{ steps.silentwriter.outputs.critical_violations }}"
+          echo ""
+          echo "This PR violates critical architectural rules and cannot"
+          echo "be merged. Please review the violations and make the"
+          echo "necessary changes."
+          echo ""
+          echo "See the PR comment for detailed information."
+          echo "════════════════════════════════════════════════════════"
+          exit 1
+
+      # ─────────────────────────────────────────────────────────
+      # STEP 10: Upload artifacts for debugging
+      # ─────────────────────────────────────────────────────────
+      - name: 📤 Upload Analysis Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: silentwriter-report-pr-${{ github.event.pull_request.number }}
+          path: verdict.txt
+          retention-days: 30
